@@ -1,0 +1,411 @@
+\documentclass{article}
+\title{\vspace{-3cm}PMA Assignment 6 - Black-Litterman}
+\author{Marighetti Althea, Panko Aliaksandr}
+
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{url}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage[a4paper,margin=1.5cm, tmargin=3cm]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\begin{document}
+\maketitle
+\vspace{1cm}
+\section*{Presentation}
+Althea Marighetti can present \\
+Aliaksandr Panko can present.
+
+\section*{Introduction}
+For this assignment we will replicate the model from Black-Litterman and we will base our conclusions from their paper "Global Portfolio Optimization" (1992).
+
+\section*{Question 1}
+\textbf{Discuss the Black Litterman approach to portfolio optimization compared to Mean-Variance optimization with constraints on the minimum and maximum weights of each asset class.} \\ \\
+The Black-Litterman model is an asset allocation model developed by Fischer Black and Robert Litterman. The model is basically a combination of two main theories of portfolio theory: the capital asset pricing model (CAPM) and the mean-variance optimization theory. \\
+Black and Litterman extend the mean-variance framework by creating an estimation strategy that combines an equilibrium model of asset performance (specified under the assumptions of the CAPM) with the investor’s views on the assets in the
+portfolio. Since many investors make investment decisions based on how they view the market or a certain asset, it is intuitive to incorporate these views into the model. The equilibrium model is used to specify a neutral starting point that the investor can adjust using specific views. \\ BL model has, anyhow, many assumptions: beside the CAPM assumption, it is considered that investors have the same views on the market and risk aversion, which can be argued to be unlikely on an individual level. \\ However, due to the common usage of analyst reports across the market, many investors do indeed have similar (if not identical) views on assets. Investor views in the BL model can either be absolute or relative. Absolute views specify the expected return for an individual security, while relative views specify the relationship between assets. \\
+The model uses the same mean-variance utility function to calculate the optimal portfolio weights which is used the Markowitz model. \\
+Therefore, the main difference between the two model is the estimation procedure of the data inputs. The idea of the Markowitz model to use estimates based on historical data leads to a quite sensitive model to any changes of the inputs themselves. Consequentely, the model often advises extremely long or short positions in assets (when no constraints), which can be problematic for an investor especially because of large transaction costs, which lower the profitability of the model. In fact, the historical mean-variance model is often outperformed by the equal investment portfolio. \\
+Even when constraints are applied, the model is still unable to account for estimation error in the values of the
+historical means and covariance since they are the only inputs. Estimation error can be better accounted for by using Bayesian methods (as in the BL model) to specify a distribution on the inputs. \\
+Finally, as Black and Litterman explicity say in the paper: "The historical average approach assumes, as a neutral reference, that excess returns will equal their historical averages. The problem with this approach is that \textbf{historical means provide very poor forecasts of future returns}".
+\section*{Question 2}
+\textbf{Discuss the use of carry as a signal for / predictor of future performance.} \\ \\
+Koijen, Pedersen, Moskowitz, and Vrugt (2013) define an asset’s carry as its expected return assuming that market conditions including its price stay the same. Therefore, an asset’s expected return is its carry plus its expected price appreciation, where carry is a model-free characteristic that is directly observable ex ante.\\ Carry is related to the typical predictor returns as: the slope of the yield curve (for bonds), the convenience yield (commodities) and dividend yield (Equity). \\ Koijen, Pedersen, Moskowitz, and Vrugt find that the predictability of carry is often stronger than that of these traditional predictors, indicating that carry not only provides a unified conceptual framework for these variables, but may also improve upon return predictability within each asset class. \\ 
+These authors use the following formulas:
+\[ C_t = \frac{S_t - F_t}{F_t} \]
+and
+\[ r_{t+1} = c + b_t + \beta \cdot C_t + \epsilon_{t+1} \]
+where $c$ is the intercept/fixed effect, $b_t$ are the time fixed effects, $C_t$ is the carry as defined above at time t, and $\beta$ is the carry coefficient. The $\beta$ measures how well the carry predicts returns. \\
+Koijen, Pedersen, Moskowitz, and Vrugt conclude the following:
+\begin{itemize}
+\item $\beta = 1$ means that the carry predicts the expected return 1-to-1 (one increase by 1\%, the other one also)
+\item $\beta = 0$ means that the carry does not predict returns
+\item $\beta > 0$ means that a positive carry leads to a positive expected price appreciation 
+\item $\beta < 0$ means that a positive carry leads to a negative expected return and vice-versa, therefore the market takes back part of the carry.
+\end{itemize}
+
+As Koijen, Pedersen, Moskowitz, and Vrugt show in their paper, the carry is not explained by the other factors (such as value or momentum) and that it is a unique return predictor in each asset class. However, carry strategies have some problems: \textbf{(1)} exposure to traditional macro indicators, \textbf{(2)} skewness and kurtosis (highly negatively skewed if portfolio is not diversified), \textbf{(3)} liquidity and volatility risk (carry strategy are more exposed to liquidity shocks and they are negatively exposed to volatility risk). \\ \\
+To conclude, as every approach, this new carry-model has advantages and drawdowns. To have a better idea ourself, in the following section we will use this approach to specify the investor's view in the Black and Litterman model.
+
+\section*{Question 3}
+\subsection*{Compute inputs}
+First thing we do after loading the data is to select the libor1m rates and convert them into monthly data:
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+rm(list = ls())
+load(file.choose()) #"/Users/Althea/Downloads/qfin_ass_BL_data.RData"
+library(dplyr)
+
+# TODO right order for SP500
+ibor <- tsr %>% dplyr::select(CAC.ibor1m,
+                              DAX.ibor1m,
+                              HSI.ibor1m,
+                              NKY.ibor1m,
+                              SPTSX60.ibor1m,
+                              SPX.ibor1m,
+                              UKX.ibor1m)
+# in value (not %)
+ibor <- ibor/100
+
+# set index
+rownames(ibor) <- tsr$date
+
+#head(ibor)
+
+#monthly
+# get geometric monthly returns
+ibor.monthly <- (ibor + 1)^(1/12)-1
+
+head(ibor.monthly)
+@
+
+Afterwards, we define the total return index S and the echange rate X.
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+#define S_t and X_t
+# Total return index in loc curr
+S <- tsr %>% dplyr::select(CAC.idx.tri.lc,
+                           DAX.idx.tri.lc,
+                           HSI.idx.tri.lc,
+                           NKY.idx.tri.lc,
+                           SPTSX60.idx.tri.lc,
+                           SPX.idx.tri.lc,
+                           UKX.idx.tri.lc)
+rownames(S) <- tsr$date
+
+# there are NA for 1998-12-31 so we start from the next period
+S <- S[-1,]
+
+# exchange rate
+X <- tsr %>% dplyr::select(CAC.fx.spot,
+                           DAX.fx.spot,
+                           HSI.fx.spot,
+                           NKY.fx.spot,
+                           SPTSX60.fx.spot,
+                           SPX.fx.spot,
+                           UKX.fx.spot)
+rownames(X) <- tsr$date
+
+X <- X[-1,]
+
+
+
+# take X for the same dates as S
+S[1:4,1:7]
+X[1:4,1:7]
+@
+
+Now we can finally compute the USD-dominated excess returns:
+\[ r_t = \frac{S_t/X_t - S_{t-1}/X_{t-1}}{S_{t-1}/X_{t-1}} - r_t^f .\]
+We obtain the following: \\
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+
+# excess return
+r <- matrix(0, nrow(X), ncol(X))
+
+for(i in 2:nrow(r)){
+  for (j in 1:ncol(r)){
+    r[i,j]  <- (S[i,j]/X[i,j] - S[i-1,j]/X[i-1,j])/(S[i-1,j]/X[i-1,j]) - ibor.monthly[i,j] 
+  }
+}
+
+r <- r[-1,]
+rownames(r) <- paste(tsr$date[-(1:2)])
+colnames(r) <- c("CAC", "DAX", "HSI", "NKY", "SPTSX60", "SPX", "UKX")
+round(head(r),5)
+@
+
+Next thing we need to calculate is the covariance matrix. The task asks us to make a reasonable choice for the period over which we estimate covariances. Since we have data from 1999 to 2018, we select the whole period until the financial crisis, therefore from 1999 up to end of 2006. This is what we obtain:
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+# Covariance matrix for excess returns
+library(xts)
+rt <- as.xts(r)
+period <- '1999/2006'
+rt <- rt[period]
+
+# annualized
+cov_matrix <- cov(rt)*12
+isSymmetric(cov_matrix)
+
+round(cov_matrix,4)
+@
+
+Now, we will calculate the market capitalization (in USD),
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+# market capitalization 
+mkt_capit <- tsr %>% dplyr::select(CAC.idx.mcap.lc,
+                                   DAX.idx.mcap.lc,
+                                   HSI.idx.mcap.lc,
+                                   NKY.idx.mcap.lc,
+                                   SPTSX60.idx.mcap.lc,
+                                   SPX.idx.mcap.lc,
+                                   UKX.idx.mcap.lc)
+
+rownames(mkt_capit) <- paste(tsr$date)
+mkt_capit <- mkt_capit[-1,]
+
+mkt_capit_USD <- mkt_capit / X
+head(mkt_capit_USD,3)
+tail(mkt_capit_USD,3)
+@
+
+and the weights (we show the last period since we have NA for the first 38 months):
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+# weights
+weights <- matrix(0,nrow(X), ncol=7)
+rownames(weights) <- paste(tsr$date[-1])
+colnames(weights) <- colnames(r)
+
+for (i in 1:nrow(weights)){
+  for (j in 1:7){
+    weights[i,j] <- mkt_capit_USD[i,j]/sum(mkt_capit_USD[i,])  }
+}
+
+round(tail(weights),5)
+@
+
+At this point we just need to calculate the carry. In order to calculate it, we need the futures. Since our last period is 2018-12-31, we need to interpolate using the prices of futures contracts expiring on March 15th, 2019 and June 14th, 2019 (third fridays of the month). 
+\[ p_i = K d_i + B \]
+where $i = 1,2$, $p_i$ are the two prices, $d_i$ are the days to expiration, finally $K$ and $B$ are the values to estimate. We obtain B and K as follows: \\
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+# 2018-12-31
+last_w <- weights[240,] 
+
+# Future next quarter
+fut1 <- tsr %>% dplyr::select(CAC.fut1.pi.lc,
+                              DAX.fut1.pi.lc,
+                              HSI.fut1.pi.lc,
+                              NKY.fut1.pi.lc,
+                              SPTSX60.fut1.pi.lc,
+                              SPX.fut1.pi.lc,
+                              UKX.fut1.pi.lc)
+
+rownames(fut1) <- paste(tsr$date)
+fut1 <- fut1[-1,]
+#head(fut1)
+
+fut2 <- tsr %>% dplyr::select(CAC.fut2.pi.lc,
+                              DAX.fut2.pi.lc,
+                              HSI.fut2.pi.lc,
+                              NKY.fut2.pi.lc,
+                              SPTSX60.fut2.pi.lc,
+                              SPX.fut2.pi.lc,
+                              UKX.fut2.pi.lc)
+
+rownames(fut2) <- paste(tsr$date)
+fut2 <- fut2[-1,]
+#head(fut2)
+
+#2019-03-15 ---> 3rd friday of 3rd month starting from our last day
+#("2019-06-21") ---> same
+
+d1 <-abs(as.numeric(as.Date("2018-12-31")- as.Date("2019-03-15")))
+d2 <- abs(as.numeric(as.Date("2018-12-31")- as.Date("2019-06-21")))
+@
+
+And our future prices for 31.12.2018 are: \\
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+futures1_last_date <- fut1[nrow(fut1),]
+futures2_last_date <- fut2[nrow(fut2),]
+futures_difference <- futures2_last_date - futures1_last_date
+
+fut_my <- futures_difference * (-d1) / (d2-d1) + futures1_last_date 
+fut_my
+@
+
+Now we are able to calculate the carry using the following formula:
+\[ C_t = \frac{S_t - F_t}{F_t}\]
+and we obtain: \\
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+C <- (S[nrow(S),] - fut_my) /fut_my
+round(C,5)
+@
+
+We will now create a views vector using the given formula $4\cdot(C^i - C^{SPX})$, obtaining: \\
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+#last day to use carry
+# create views
+views <- as.vector(C[1,]) - C[[6]]
+views <- C[-6]
+
+
+colnames(views) <- c("CAC","DAX", "HSI","NKY","SPTSX60","UKX" )
+views
+@
+
+The P matrix is instead: \\
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+
+#P matrix
+P <- matrix(0, 6,6)
+diag(P) <- 1
+P <- cbind(P, c(rep(-1,6)))
+rownames(P) <- colnames(views)
+colnames(P) <- c("CAC", "DAX", "HSI", "NKY", "SPTSX60","UKX", "SPX")
+P <- P[,c("CAC", "DAX", "HSI", "NKY", "SPTSX60", "SPX", "UKX")]
+P
+@
+
+
+Last input we need is omega $\Omega = P \Sigma P'$, which is: \\
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+#calculate omega
+omega <- as.matrix(P) %*% cov_matrix %*% t(P)
+round(omega,5)
+
+
+@
+
+\subsection*{Black-Litterman portfolio optimization}
+Now that we computed the necessary inputs, using a risk aversion coefficient $A=3$ and $\tau = 0.01$, we can run the Black-Litterman portfolio optimization. \\~\\
+
+\subsubsection*{a) What are the computed optimal portfolio weights? How do they differ from the market weights?}
+We compute the following:
+\[ \Pi = A \Sigma w* \]
+obtaining \\ 
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+mkt_weight <- last_w
+
+pi <- 3*cov_matrix %*% as.vector(mkt_weight)
+pi
+@
+
+Posterior variance-covariance matrix
+\[ \bar{\Sigma} = [(\tau \Sigma)^{-1} + P'\Omega^{-1}P]^{-1} \]
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+tau <- 0.01
+cov_matrix2 <- solve((solve(tau*cov_matrix) + (t(P) %*% solve(omega) %*% P )))
+round(cov_matrix2,5)
+@
+
+Posterior mean: \[  \bar{\mu} = \bar{\Sigma}[(\tau \Sigma)^{-1}\Pi + P'\Omega^{-1}V] \]
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+mu_2 <- cov_matrix2 %*% (solve(tau*cov_matrix) %*% pi + t(P) %*% solve(omega) %*% as.matrix(t(views)))
+mu_2
+@
+
+Covariance matrix of the assets $\Sigma_{BL} = \Sigma + \bar{\Sigma}$:
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+cov_matrix_bl <- cov_matrix + cov_matrix2
+round(cov_matrix_bl,4)
+@
+
+Optimal weights can be found using the next formula:
+
+\begin{equation}
+w = \frac{1}{A} * \Sigma^{-1}*\bar{\mu}
+\end{equation}
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+opt_weights <- 1/3 *solve(cov_matrix_bl) %*% mu_2
+results <- cbind(opt_weights, mkt_weight, (opt_weights-mkt_weight))
+colnames(results) <- c("Optimal weights", "Market weights", "Difference")
+library(xtable)
+#xtable(results)
+@
+
+Results:
+
+% latex table generated in R 3.4.0 by xtable 1.8-3 package
+% Fri Jan 25 14:04:31 2019
+\begin{table}[ht]
+\centering
+\begin{tabular}{rrrr}
+  \hline
+ & Optimal weights & Market weights & Difference \\ 
+  \hline
+CAC & 0.47 & 0.04 & 0.43 \\ 
+  DAX & -0.35 & 0.03 & -0.37 \\ 
+  HSI & 0.19 & 0.07 & 0.12 \\ 
+  NKY & 0.03 & 0.10 & -0.06 \\ 
+  SPTSX60 & 0.19 & 0.04 & 0.15 \\ 
+  SPX & 0.27 & 0.69 & -0.42 \\ 
+  UKX & 0.19 & 0.04 & 0.15 \\ 
+   \hline
+\end{tabular}
+\end{table}
+
+\subsubsection*{b) What are the posterior means (expected returns combining equilibrium and views)? How do they compare to the equilibrium expected excess returns and views?}
+
+<<echo=FALSE, message=FALSE, warning=FALSE>>=
+means <- cbind(pi,mu_2,mu_2 - pi)
+colnames(means) <- c("Prior exc. ret", "Post. exc. ret", "Difference")
+means
+#xtable(means)
+@
+
+% % latex table generated in R 3.4.0 by xtable 1.8-3 package
+% % Fri Jan 25 14:15:00 2019
+% \begin{table}[ht]
+% \centering
+% \begin{tabular}{rrrr}
+%   \hline
+%  & Prior exc. ret & Post. exc. ret & Difference \\ 
+%   \hline
+% CAC & 0.07 & 0.07 & 0.00 \\ 
+%   DAX & 0.09 & 0.08 & -0.01 \\ 
+%   HSI & 0.07 & 0.07 & 0.00 \\ 
+%   NKY & 0.06 & 0.05 & -0.00 \\ 
+%   SPTSX60 & 0.07 & 0.07 & -0.00 \\ 
+%   SPX & 0.06 & 0.05 & -0.01 \\ 
+%   UKX & 0.05 & 0.05 & 0.00 \\ 
+%    \hline
+% \end{tabular}
+% \end{table}
+
+
+\subsubsection*{How does the value of parameter $\tau$ affects the results? Do higher/lower
+values of $\tau$ lead to posterior expected excess returns closer to the
+equilibrium/the view?}
+
+$\tau * \Sigma$ can be interpreted as an error of estimate of $\Pi$ (Prior equilibrium excess return). Higher $\tau$ corresponds to higher error of $\Pi$. This "makes market less confident" driving posterior excess returns farther from priors.
+
+
+\subsubsection*{Is there anything special about the DAX index?}
+
+DAX is the only one index with negative optimal weights, meaning shorting the index.
+
+
+
+\newpage
+\section*{Literature}
+\begin{itemize}
+\item D. E. Roeder (2015), \textit{Dealing with Data: An Empirical Analysis of Bayesian Black-Litterman Model Extensions}
+\item F.Black, R.Litterman (1992), \textit{Global Portfolio Optimization}
+\item Koijen, Moskowitz, Pedersen, Vrugt (2018, JFE), \textit{Carry}
+\item Zecchi, J. (2015), \textit{Black Litterman and Carry: A new approach for asset allocation}
+\item \url{https://www.investopedia.com/terms/b/black-litterman_model.asp}
+\end{itemize}
+\end{document}
